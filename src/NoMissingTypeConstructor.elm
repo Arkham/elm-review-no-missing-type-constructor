@@ -1,5 +1,11 @@
 module NoMissingTypeConstructor exposing (rule)
 
+{-|
+
+@docs rule
+
+-}
+
 import Dict exposing (Dict)
 import Elm.Syntax.Declaration as Declaration exposing (Declaration)
 import Elm.Syntax.Expression as Expression exposing (Expression)
@@ -12,6 +18,7 @@ import Review.Rule as Rule exposing (Error, Rule)
 import Set exposing (Set)
 
 
+{-| -}
 rule : Rule
 rule =
     Rule.newProjectRuleSchema "NoMissingTypeConstructor" initialProjectContext

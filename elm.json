@@ -1,7 +1,7 @@
 {
     "type": "package",
     "name": "Arkham/elm-review-no-missing-type-constructor",
-    "summary": "",
+    "summary": "elm-review rule to detect missing type constructor",
     "license": "BSD-3-Clause",
     "version": "1.0.0",
     "exposed-modules": [
