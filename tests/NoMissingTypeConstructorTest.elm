@@ -2,7 +2,7 @@ module NoMissingTypeConstructorTest exposing (all)
 
 import NoMissingTypeConstructor exposing (rule)
 import Review.Test
-import Test exposing (..)
+import Test exposing (Test, describe, test)
 
 
 all : Test
