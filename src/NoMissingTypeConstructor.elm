@@ -1,6 +1,22 @@
 module NoMissingTypeConstructor exposing (rule)
 
-{-|
+{-| Imagine you have a type like this:
+
+    type Color
+        = Red
+        | Green
+        | Blue
+
+And a definition like this:
+
+    allColors : List Color
+    allColors =
+        [ Red, Green ]
+
+This elm-review rule will report a warning because `allColors` does not have all the possible constructors, since it's missing the `Blue` variant.
+
+
+# Rule
 
 @docs rule
 
@@ -18,7 +34,25 @@ import Review.Rule as Rule exposing (Error, Rule)
 import Set exposing (Set)
 
 
-{-| -}
+{-|
+
+
+## Usage
+
+After adding [elm-review](https://package.elm-lang.org/packages/jfmengels/elm-review/latest/) to your project,
+import this rule to `ReviewConfig.elm` file and add it to the config.
+
+
+## Example configuration
+
+    import NoMissingTypeConstructor
+    import Review.Rule exposing (Rule)
+
+    config : List Rule
+    config =
+        [ NoMissingTypeConstructor.rule ]
+
+-}
 rule : Rule
 rule =
     Rule.newProjectRuleSchema "NoMissingTypeConstructor" initialProjectContext
