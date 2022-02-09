@@ -27,6 +27,7 @@ import Elm.Syntax.Declaration as Declaration exposing (Declaration)
 import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node)
+import Elm.Syntax.Range as Range
 import Elm.Syntax.Type exposing (Type)
 import Elm.Syntax.TypeAnnotation as TypeAnnotation exposing (TypeAnnotation)
 import Review.Fix
@@ -312,16 +313,19 @@ addMissingConstructors :
     -> Review.Fix.Fix
 addMissingConstructors { missingConstructors, usedConstructors } function =
     let
+        listDeclarationExpression : Node Expression
         listDeclarationExpression =
             function.declaration
                 |> Node.value
                 |> .expression
 
+        endOfList : Range.Location
         endOfList =
             listDeclarationExpression
                 |> Node.range
                 |> .end
 
+        afterLastOption : { column : Int, row : Int }
         afterLastOption =
             case lastItemDeclared listDeclarationExpression of
                 Nothing ->
