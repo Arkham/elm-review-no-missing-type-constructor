@@ -27,8 +27,10 @@ import Elm.Syntax.Declaration as Declaration exposing (Declaration)
 import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Syntax.ModuleName exposing (ModuleName)
 import Elm.Syntax.Node as Node exposing (Node)
+import Elm.Syntax.Range as Range
 import Elm.Syntax.Type exposing (Type)
 import Elm.Syntax.TypeAnnotation as TypeAnnotation exposing (TypeAnnotation)
+import Review.Fix
 import Review.ModuleNameLookupTable as ModuleNameLookupTable exposing (ModuleNameLookupTable)
 import Review.Rule as Rule exposing (Error, Rule)
 import Set exposing (Set)
@@ -201,7 +203,7 @@ declarationVisitor declaration context =
                                     )
 
                                 else
-                                    ( [ Rule.error
+                                    ( [ Rule.errorWithFix
                                             { message = "`" ++ Node.value functionName ++ "` does not contain all the type constructors for `" ++ typeName ++ "`"
                                             , details =
                                                 [ "We expect `" ++ Node.value functionName ++ "` to contain all the type constructors for `" ++ typeName ++ "`."
@@ -211,6 +213,12 @@ declarationVisitor declaration context =
                                                 ]
                                             }
                                             (Node.range functionName)
+                                            [ addMissingConstructors
+                                                { missingConstructors = missingConstructors
+                                                , usedConstructors = usedConstructors
+                                                }
+                                                function
+                                            ]
                                       ]
                                     , context
                                     )
@@ -283,3 +291,60 @@ getListOfTypeAnnotation lookupTable typeAnnotation =
 
         _ ->
             Nothing
+
+
+lastItemDeclared : Node Expression -> Maybe (Node Expression)
+lastItemDeclared listOfItemsExpression =
+    case Node.value listOfItemsExpression of
+        Expression.ListExpr items ->
+            items
+                |> List.reverse
+                |> List.head
+
+        _ ->
+            Nothing
+
+
+addMissingConstructors :
+    { missingConstructors : Set String
+    , usedConstructors : Set String
+    }
+    -> Expression.Function
+    -> Review.Fix.Fix
+addMissingConstructors { missingConstructors, usedConstructors } function =
+    let
+        listDeclarationExpression : Node Expression
+        listDeclarationExpression =
+            function.declaration
+                |> Node.value
+                |> .expression
+
+        endOfList : Range.Location
+        endOfList =
+            listDeclarationExpression
+                |> Node.range
+                |> .end
+
+        afterLastOption : { column : Int, row : Int }
+        afterLastOption =
+            case lastItemDeclared listDeclarationExpression of
+                Nothing ->
+                    -- If there are no options, insert just before the end of the list `]`.
+                    { endOfList
+                        | column = endOfList.column - 1
+                    }
+
+                Just lastItemDeclared_ ->
+                    Node.range lastItemDeclared_
+                        |> .end
+    in
+    Review.Fix.insertAt
+        afterLastOption
+        ((if Set.size usedConstructors > 0 then
+            ", "
+
+          else
+            " "
+         )
+            ++ (missingConstructors |> Set.toList |> String.join ", ")
+        )

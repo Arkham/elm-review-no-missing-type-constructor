@@ -28,6 +28,12 @@ allThings = [ A, C, B ]
                             , under = "allThings"
                             }
                             |> Review.Test.atExactly { start = { row = 4, column = 1 }, end = { row = 4, column = 10 } }
+                            |> Review.Test.whenFixed
+                                """module A exposing (..)
+type Thing = A | B | C | D | E
+allThings : List Thing
+allThings = [ A, C, B, D, E ]
+"""
                         ]
         , test "should report when a declaration named `all...` that is of type `List <CustomTypeName>` does not have all the type constructors in its value (2)" <|
             \_ ->
@@ -48,6 +54,12 @@ allShenanigans = [ FirstThing, ThirdThing ]
                             , under = "allShenanigans"
                             }
                             |> Review.Test.atExactly { start = { row = 4, column = 1 }, end = { row = 4, column = 15 } }
+                            |> Review.Test.whenFixed
+                                """module A exposing (..)
+type Shenanigan = FirstThing | SecondThing | ThirdThing
+allShenanigans : List Shenanigan
+allShenanigans = [ FirstThing, ThirdThing, SecondThing ]
+"""
                         ]
         , test "should report when a declaration named `all...` that is of type `List <CustomTypeName>` does not have all the type constructors in its value, where type is defined in a different module" <|
             \_ ->
@@ -71,6 +83,12 @@ type Shenanigan = FirstThing | SecondThing | ThirdThing
                                 , under = "allShenanigans"
                                 }
                                 |> Review.Test.atExactly { start = { row = 4, column = 1 }, end = { row = 4, column = 15 } }
+                                |> Review.Test.whenFixed
+                                    """module A exposing (..)
+import CustomTypeHolder exposing (..)
+allShenanigans : List Shenanigan
+allShenanigans = [ FirstThing, ThirdThing, SecondThing ]
+"""
                             ]
                           )
                         ]
@@ -123,4 +141,34 @@ someOfTheThings = [ A, C, B ]
 """
                     |> Review.Test.run rule
                     |> Review.Test.expectNoErrors
+        , test "should fix when a declaration named `all` that is of type `List <CustomTypeName>` does not have ANY of the type constructors in its value" <|
+            \_ ->
+                """module A exposing (..)
+type Thing = A | B | C | D | E
+all : List Thing
+all = []
+"""
+                    |> Review.Test.run rule
+                    |> Review.Test.expectErrors
+                        [ Review.Test.error
+                            { message = "`all` does not contain all the type constructors for `Thing`"
+                            , details =
+                                [ "We expect `all` to contain all the type constructors for `Thing`."
+                                , """In this case, you are missing the following constructors:
+    , A
+    , B
+    , C
+    , D
+    , E"""
+                                ]
+                            , under = "all"
+                            }
+                            |> Review.Test.atExactly { start = { row = 4, column = 1 }, end = { row = 4, column = 4 } }
+                            |> Review.Test.whenFixed
+                                """module A exposing (..)
+type Thing = A | B | C | D | E
+all : List Thing
+all = [ A, B, C, D, E]
+"""
+                        ]
         ]
