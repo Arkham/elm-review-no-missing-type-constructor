@@ -15,6 +15,14 @@ And a definition like this:
 
 This elm-review rule will report a warning because `allColors` does not have all the possible constructors, since it's missing the `Blue` variant.
 
+The following will also get reported\*:
+
+    allColors : Nonempty Color
+    allColors =
+        Nonempty Red [ Green ]
+
+\*The rule is built with [mgold/elm-nonempty-list](https://package.elm-lang.org/packages/mgold/elm-nonempty-list/latest/) in mind but any nonempty list package should work so long as it has a Nonempty or NonEmpty type and the list is constructed with `functionOrValue VariantA [ ... ]`
+
 
 # Rule
 
@@ -26,7 +34,7 @@ import Dict exposing (Dict)
 import Elm.Syntax.Declaration as Declaration exposing (Declaration)
 import Elm.Syntax.Expression as Expression exposing (Expression)
 import Elm.Syntax.ModuleName exposing (ModuleName)
-import Elm.Syntax.Node as Node exposing (Node)
+import Elm.Syntax.Node as Node exposing (Node(..))
 import Elm.Syntax.Range as Range
 import Elm.Syntax.Type exposing (Type)
 import Elm.Syntax.TypeAnnotation as TypeAnnotation exposing (TypeAnnotation)
@@ -185,43 +193,44 @@ declarationVisitor declaration context =
                         -- of a definition like the one mentioned above.
                         case Dict.get moduleName context.customTypes |> Maybe.andThen (Dict.get typeName) of
                             Just constructors ->
-                                let
-                                    usedConstructors : Set String
-                                    usedConstructors =
-                                        function.declaration
-                                            |> Node.value
-                                            |> .expression
-                                            |> availableConstructors
+                                case function.declaration |> Node.value |> .expression |> availableConstructors of
+                                    Nothing ->
+                                        ( []
+                                        , context
+                                        )
 
-                                    missingConstructors : Set String
-                                    missingConstructors =
-                                        Set.diff constructors usedConstructors
-                                in
-                                if Set.isEmpty missingConstructors then
-                                    ( []
-                                    , context
-                                    )
+                                    Just usedConstructors ->
+                                        let
+                                            missingConstructors : Set String
+                                            missingConstructors =
+                                                Set.diff constructors usedConstructors.constructors
+                                        in
+                                        if Set.isEmpty missingConstructors then
+                                            ( []
+                                            , context
+                                            )
 
-                                else
-                                    ( [ Rule.errorWithFix
-                                            { message = "`" ++ Node.value functionName ++ "` does not contain all the type constructors for `" ++ typeName ++ "`"
-                                            , details =
-                                                [ "We expect `" ++ Node.value functionName ++ "` to contain all the type constructors for `" ++ typeName ++ "`."
-                                                , """In this case, you are missing the following constructors:
+                                        else
+                                            ( [ Rule.errorWithFix
+                                                    { message = "`" ++ Node.value functionName ++ "` does not contain all the type constructors for `" ++ typeName ++ "`"
+                                                    , details =
+                                                        [ "We expect `" ++ Node.value functionName ++ "` to contain all the type constructors for `" ++ typeName ++ "`."
+                                                        , """In this case, you are missing the following constructors:
     , """
-                                                    ++ (missingConstructors |> Set.toList |> String.join "\n    , ")
-                                                ]
-                                            }
-                                            (Node.range functionName)
-                                            [ addMissingConstructors
-                                                { missingConstructors = missingConstructors
-                                                , usedConstructors = usedConstructors
-                                                }
-                                                function
-                                            ]
-                                      ]
-                                    , context
-                                    )
+                                                            ++ (missingConstructors |> Set.toList |> String.join "\n    , ")
+                                                        ]
+                                                    }
+                                                    (Node.range functionName)
+                                                    [ addMissingConstructors
+                                                        { missingConstructors = missingConstructors
+                                                        , usedConstructors = usedConstructors.constructors
+                                                        , isNonemptyList = usedConstructors.isNonempty
+                                                        }
+                                                        usedConstructors.listExpression
+                                                    ]
+                                              ]
+                                            , context
+                                            )
 
                             Nothing ->
                                 ( []
@@ -238,16 +247,27 @@ declarationVisitor declaration context =
             ( [], context )
 
 
-availableConstructors : Node Expression -> Set String
+availableConstructors :
+    Node Expression
+    -> Maybe { constructors : Set String, listExpression : Node Expression, isNonempty : Bool }
 availableConstructors expr =
     case Node.value expr of
         Expression.ListExpr list ->
-            list
-                |> List.filterMap constructorName
-                |> Set.fromList
+            Just
+                { constructors = list |> List.filterMap constructorName |> Set.fromList
+                , listExpression = expr
+                , isNonempty = False
+                }
+
+        Expression.Application [ Node _ (Expression.FunctionOrValue _ _), Node _ (Expression.FunctionOrValue _ head), (Node _ (Expression.ListExpr rest)) as listExpr ] ->
+            Just
+                { constructors = head :: List.filterMap constructorName rest |> Set.fromList
+                , listExpression = listExpr
+                , isNonempty = True
+                }
 
         _ ->
-            Set.empty
+            Nothing
 
 
 constructorName : Node Expression -> Maybe String
@@ -286,6 +306,22 @@ getListOfTypeAnnotation lookupTable typeAnnotation =
                         Nothing ->
                             Nothing
 
+                ( ( _, "Nonempty" ), TypeAnnotation.Typed parameter _ ) ->
+                    case ModuleNameLookupTable.moduleNameFor lookupTable parameter of
+                        Just moduleName ->
+                            Just ( moduleName, Node.value parameter |> Tuple.second )
+
+                        Nothing ->
+                            Nothing
+
+                ( ( _, "NonEmpty" ), TypeAnnotation.Typed parameter _ ) ->
+                    case ModuleNameLookupTable.moduleNameFor lookupTable parameter of
+                        Just moduleName ->
+                            Just ( moduleName, Node.value parameter |> Tuple.second )
+
+                        Nothing ->
+                            Nothing
+
                 _ ->
                     Nothing
 
@@ -308,26 +344,21 @@ lastItemDeclared listOfItemsExpression =
 addMissingConstructors :
     { missingConstructors : Set String
     , usedConstructors : Set String
+    , isNonemptyList : Bool
     }
-    -> Expression.Function
+    -> Node Expression
     -> Review.Fix.Fix
-addMissingConstructors { missingConstructors, usedConstructors } function =
+addMissingConstructors { missingConstructors, usedConstructors, isNonemptyList } listExpression =
     let
-        listDeclarationExpression : Node Expression
-        listDeclarationExpression =
-            function.declaration
-                |> Node.value
-                |> .expression
-
         endOfList : Range.Location
         endOfList =
-            listDeclarationExpression
+            listExpression
                 |> Node.range
                 |> .end
 
         afterLastOption : { column : Int, row : Int }
         afterLastOption =
-            case lastItemDeclared listDeclarationExpression of
+            case lastItemDeclared listExpression of
                 Nothing ->
                     -- If there are no options, insert just before the end of the list `]`.
                     { endOfList
@@ -337,10 +368,18 @@ addMissingConstructors { missingConstructors, usedConstructors } function =
                 Just lastItemDeclared_ ->
                     Node.range lastItemDeclared_
                         |> .end
+
+        listSize : Int
+        listSize =
+            if isNonemptyList then
+                Set.size usedConstructors - 1
+
+            else
+                Set.size usedConstructors
     in
     Review.Fix.insertAt
         afterLastOption
-        ((if Set.size usedConstructors > 0 then
+        ((if listSize > 0 then
             ", "
 
           else
