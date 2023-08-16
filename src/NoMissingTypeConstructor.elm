@@ -194,44 +194,50 @@ declarationVisitor declaration context =
                         -- of a definition like the one mentioned above.
                         case Dict.get moduleName context.customTypes |> Maybe.andThen (Dict.get typeName) of
                             Just constructors ->
-                                case function.declaration |> Node.value |> .expression |> availableConstructors of
-                                    Nothing ->
-                                        ( []
-                                        , context
-                                        )
+                                let
+                                    usedConstructors : { constructors : Set String, listExpression : Maybe (Node Expression), isNonempty : Bool }
+                                    usedConstructors =
+                                        function.declaration
+                                            |> Node.value
+                                            |> .expression
+                                            |> availableConstructors
 
-                                    Just usedConstructors ->
-                                        let
-                                            missingConstructors : Set String
-                                            missingConstructors =
-                                                Set.diff constructors usedConstructors.constructors
-                                        in
-                                        if Set.isEmpty missingConstructors then
-                                            ( []
-                                            , context
-                                            )
+                                    missingConstructors : Set String
+                                    missingConstructors =
+                                        Set.diff constructors usedConstructors.constructors
+                                in
+                                if Set.isEmpty missingConstructors then
+                                    ( []
+                                    , context
+                                    )
 
-                                        else
-                                            ( [ Rule.errorWithFix
-                                                    { message = "`" ++ Node.value functionName ++ "` does not contain all the type constructors for `" ++ typeName ++ "`"
-                                                    , details =
-                                                        [ "We expect `" ++ Node.value functionName ++ "` to contain all the type constructors for `" ++ typeName ++ "`."
-                                                        , """In this case, you are missing the following constructors:
+                                else
+                                    ( [ Rule.errorWithFix
+                                            { message = "`" ++ Node.value functionName ++ "` does not contain all the type constructors for `" ++ typeName ++ "`"
+                                            , details =
+                                                [ "We expect `" ++ Node.value functionName ++ "` to contain all the type constructors for `" ++ typeName ++ "`."
+                                                , """In this case, you are missing the following constructors:
     , """
-                                                            ++ (missingConstructors |> Set.toList |> String.join "\n    , ")
-                                                        ]
-                                                    }
-                                                    (Node.range functionName)
+                                                    ++ (missingConstructors |> Set.toList |> String.join "\n    , ")
+                                                ]
+                                            }
+                                            (Node.range functionName)
+                                            (case usedConstructors.listExpression of
+                                                Just listExpr ->
                                                     [ addMissingConstructors
                                                         { missingConstructors = missingConstructors
                                                         , usedConstructors = usedConstructors.constructors
                                                         , isNonemptyList = usedConstructors.isNonempty
                                                         }
-                                                        usedConstructors.listExpression
+                                                        listExpr
                                                     ]
-                                              ]
-                                            , context
+
+                                                Nothing ->
+                                                    []
                                             )
+                                      ]
+                                    , context
+                                    )
 
                             Nothing ->
                                 ( []
@@ -250,25 +256,26 @@ declarationVisitor declaration context =
 
 availableConstructors :
     Node Expression
-    -> Maybe { constructors : Set String, listExpression : Node Expression, isNonempty : Bool }
+    -> { constructors : Set String, listExpression : Maybe (Node Expression), isNonempty : Bool }
 availableConstructors expr =
     case Node.value expr of
         Expression.ListExpr list ->
-            Just
-                { constructors = list |> List.filterMap constructorName |> Set.fromList
-                , listExpression = expr
-                , isNonempty = False
-                }
+            { constructors = list |> List.filterMap constructorName |> Set.fromList
+            , listExpression = Just expr
+            , isNonempty = False
+            }
 
         Expression.Application [ Node _ (Expression.FunctionOrValue _ _), Node _ (Expression.FunctionOrValue _ head), (Node _ (Expression.ListExpr rest)) as listExpr ] ->
-            Just
-                { constructors = head :: List.filterMap constructorName rest |> Set.fromList
-                , listExpression = listExpr
-                , isNonempty = True
-                }
+            { constructors = head :: List.filterMap constructorName rest |> Set.fromList
+            , listExpression = Just listExpr
+            , isNonempty = True
+            }
 
         _ ->
-            Nothing
+            { constructors = Set.empty
+            , listExpression = Nothing
+            , isNonempty = False
+            }
 
 
 constructorName : Node Expression -> Maybe String
