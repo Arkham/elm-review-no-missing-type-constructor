@@ -4,8 +4,7 @@ Provides [`elm-review`](https://package.elm-lang.org/packages/jfmengels/elm-revi
 
 ## Provided rules
 
-- [`NoMissingTypeConstructor`](https://package.elm-lang.org/packages/Arkham/elm-review-no-missing-type-constructor/1.0.2/NoMissingTypeConstructor) - Reports missing type constructors.
-
+- [`NoMissingTypeConstructor`](https://package.elm-lang.org/packages/Arkham/elm-review-no-missing-type-constructor/1.0.3/NoMissingTypeConstructor) - Reports missing type constructors.
 
 ## Configuration
 
@@ -20,7 +19,6 @@ config =
     [ NoMissingTypeConstructor.rule
     ]
 ```
-
 
 ## Try it out
 
