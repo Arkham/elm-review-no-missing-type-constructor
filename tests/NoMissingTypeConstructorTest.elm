@@ -114,7 +114,7 @@ type Shenanigan = FirstThing | SecondThing | ThirdThing
 """ ]
                     |> Review.Test.runOnModules rule
                     |> Review.Test.expectNoErrors
-        , test "should report when a declaration named `all...` that is of type `List <CustomTypeName>` has all the type constructors in its value" <|
+        , test "should not report when a declaration named `all...` that is of type `List <CustomTypeName>` has all the type constructors in its value" <|
             \_ ->
                 """module A exposing (..)
 type Thing = A | B | C | D | E
@@ -169,6 +169,37 @@ all = []
 type Thing = A | B | C | D | E
 all : List Thing
 all = [ A, B, C, D, E]
+"""
+                        ]
+        , test "should handle nonempty constructors" <|
+            \_ ->
+                """module A exposing (..)
+import List.Nonempty exposing (Nonempty(..))
+type Thing = A | B | C | D | E
+all : Nonempty Thing
+all = Nonempty A []
+"""
+                    |> Review.Test.run rule
+                    |> Review.Test.expectErrors
+                        [ Review.Test.error
+                            { message = "`all` does not contain all the type constructors for `Thing`"
+                            , details =
+                                [ "We expect `all` to contain all the type constructors for `Thing`."
+                                , """In this case, you are missing the following constructors:
+    , B
+    , C
+    , D
+    , E"""
+                                ]
+                            , under = "all"
+                            }
+                            |> Review.Test.atExactly { start = { row = 5, column = 1 }, end = { row = 5, column = 4 } }
+                            |> Review.Test.whenFixed
+                                """module A exposing (..)
+import List.Nonempty exposing (Nonempty(..))
+type Thing = A | B | C | D | E
+all : Nonempty Thing
+all = Nonempty A [ B, C, D, E]
 """
                         ]
         ]
